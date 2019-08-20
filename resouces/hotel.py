@@ -1,29 +1,9 @@
 from flask_restful import Resource, reqparse
 from models.hotel import HotelModel
+from models.site import SiteModel
 from flask_jwt_extended import jwt_required
 import sqlite3
-
-
-def normalize_path_params(cidade=None, estrelas_min=0, estrelas_max=5,
-                          diaria_min=0, diaria_max=99999, limit=50, offset=0, **dados):
-    if cidade:
-        return {
-            "estrelas_min": estrelas_min,
-            "estrelas_max": estrelas_max,
-            "diaria_min": diaria_min,
-            "diaria_max": diaria_max,
-            "cidade": cidade,
-            "limit": limit,
-            "offset": offset,
-        }
-    return {
-        "estrelas_min": estrelas_min,
-        "estrelas_max": estrelas_max,
-        "diaria_min": diaria_min,
-        "diaria_max": diaria_max,
-        "limit": limit,
-        "offset": offset,
-    }
+from resouces.filtros import select, normalize_path_params
 
 
 path_params = reqparse.RequestParser()
@@ -46,20 +26,9 @@ class Hoteis(Resource):
                          for chave in dados if dados[chave] is not None}
         params = normalize_path_params(**dados_validos)
 
-        if not params.get('cidade'):
-            select = "SELECT * FROM hoteis\
-                WHERE (estrelas >= ? AND estrelas <= ?)\
-                 AND (diaria >= ? AND diaria <= ?)\
-                 LIMIT ? OFFSET ?"
-        else:
-            select = "SELECT * FROM hoteis\
-                WHERE (estrelas >= ? AND estrelas <= ?)\
-                 AND (diaria >= ? AND diaria <= ?)\
-                 AND cidade = ?\
-                 LIMIT ? OFFSET ?"
-
         values = tuple([params[chave] for chave in params])
-        consulta = cursor.execute(select, values)
+        consulta = cursor.execute(select(com_cidade=False) if not params.get(
+            'cidade') else select(com_cidade=True), values)
 
         hoteis = []
 
@@ -70,6 +39,7 @@ class Hoteis(Resource):
                 "estrelas": linha[2],
                 "diaria": linha[3],
                 "cidade": linha[4],
+                "site_id": linha[5],
             })
 
         return {'hoteis': hoteis}
@@ -82,6 +52,8 @@ class Hotel(Resource):
     arguments.add_argument('estrelas')
     arguments.add_argument('diaria')
     arguments.add_argument('cidade')
+    arguments.add_argument('site_id', type=int, required=True,
+                           help="The field 'Site ID' cannot be left blank!")
 
     def get(self, hotel_id):
         obj_hotel = HotelModel.find_hotel(hotel_id)
@@ -95,6 +67,9 @@ class Hotel(Resource):
             return {"message": f"Hotel ID ({hotel_id}) already exists!"}
 
         dados = Hotel.arguments.parse_args()
+
+        if not SiteModel.find_by_id(dados.get('site_id')):
+            return {"message": "Site ID not found!"}, 404
 
         obj_hotel = HotelModel(hotel_id, **dados)
 

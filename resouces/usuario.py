@@ -39,7 +39,10 @@ class UserRegister(Resource):
             return {"message": f"User ({dados['login']}) already exists!"}
 
         obj_user = UserModel(**dados)
-        obj_user.save_user()
+        try:
+            obj_user.save_user()
+        except:
+            return {"message": "An internal error ocurred trying to save user."}, 500
         return {"message": "User created successfully."}, 201
 
 
